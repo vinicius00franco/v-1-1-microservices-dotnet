@@ -1,0 +1,89 @@
+version: "3.9"
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: restaurantedb
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq-service:
+    image: rabbitmq:3-management
+    container_name: rabbitmq-service
+    restart: always
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"
+      - "15672:15672" # Interface de gerenciamento
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmqctl status || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  item-service:
+    build:
+      context: ./ItemService
+      dockerfile: Dockerfile
+    container_name: item-service
+    ports:
+      - "5001:80"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      RabbitMQHost: rabbitmq-service
+      RabbitMQPort: 5672
+      ConnectionStrings__RestauranteConnection: Server=mysql;Database=restaurantedb;User=root;Password=root;
+    depends_on:
+      rabbitmq-service:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  restaurante-service:
+    build:
+      context: ./RestauranteService
+      dockerfile: Dockerfile
+    container_name: restaurante-service
+    ports:
+      - "5000:80"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__RestauranteConnection: Server=mysql;Database=restaurantedb;User=root;Password=root;
+      ItemService: http://item-service/api/item/restaurante
+      RabbitMqHost: rabbitmq-service
+      RabbitMqPort: 5672
+    depends_on:
+      rabbitmq-service:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      item-service:
+        condition: service_started
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
