@@ -1,0 +1,17 @@
+
+
+
+services:
+
+  # Serviço do Frontend
+  frontend:
+    build:
+      context: ./Frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80" # Porta padrão do React
+    depends_on:
+      - restauranteservice
+      - itemservice
+
+
